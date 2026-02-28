@@ -3,9 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HEY-AI</title>
+    <title>HEYI: AI Page Scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="heyi.css">
 </head>
 <body>
-    
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="header">
+            <img src="assets/heyi_logo.svg" alt="HEYI Logo" class="logo-img">
+            <button id="close-btn" class="icon-btn" aria-label="Close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/04/svg">
+                    <circle cx="12" cy="12" r="11" stroke="currentColor" stroke-width="2"/>
+                    <path d="M8 8L16 16M16 8L8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </header>
+
+        <hr class="divider">
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            
+            <!-- VIEW 1: SCAN PAGE -->
+            <section id="view-scan" class="view active">
+                <div class="intro-text">
+                    <p>Scan this page to detect if the contents are AI generated.</p>
+                </div>
+
+                <div class="action-wrapper">
+                    <button id="scan-btn" class="primary-btn pulse-glow">
+                        <span class="btn-text">Scan Page</span>
+                        <div class="btn-loader hidden"></div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW 2: RESULTS PAGE -->
+            <section id="view-result" class="view hidden">
+                <div class="result-header">
+                    <h2 id="result-title" class="warning-title">Careful!</h2>
+                    <p id="result-subtitle" class="warning-subtitle">We think this is an AI posting.</p>
+                </div>
+
+                <div class="confidence-container">
+                    <div id="progress-gradient" class="progress-ring-gradient"></div>
+                    <svg class="progress-ring" width="160" height="160" viewBox="0 0 160 160">
+                        <defs>
+                            <mask id="ring-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse">
+                                <path id="mask-path"
+                                      d="M 30.5 129.5 A 70 70 0 1 1 129.5 129.5"
+                                      stroke="white" 
+                                      stroke-width="10" 
+                                      fill="transparent" 
+                                      stroke-linecap="round"
+                                      class="progress-ring__circle" />
+                            </mask>
+                            <filter id="glow">
+                                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <!-- Background ring (Gray arc) -->
+                        <path d="M 30.5 129.5 A 70 70 0 1 1 129.5 129.5"
+                              stroke="#E2E8F0" 
+                              stroke-width="10" 
+                              fill="transparent" 
+                              stroke-linecap="round" />
+                    </svg>
+                    <div class="confidence-text-wrapper">
+                        <span id="confidence-value" class="confidence-value">0%</span>
+                        <span class="confidence-label">sure</span>
+                    </div>
+                </div>
+
+                <div class="result-body">
+                    <div id="result-icon" class="result-icon"></div>
+                    <p id="result-description" class="result-description">This listing exhibits patterns commonly found in AI-generated text. Proceed with caution.</p>
+                </div>
+
+                <div class="action-wrapper">
+                    <button id="scan-again-btn" class="secondary-btn">
+                        <span>Scan again</span>
+                    </button>
+                </div>
+
+                <footer class="disclaimer">
+                    <p>Our system could get it wrong. Always verify information independently.</p>
+                </footer>
+            </section>
+
+        </main>
+    </div>
+    <script src="heyi.js"></script>
 </body>
 </html>
