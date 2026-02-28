@@ -1,10 +1,10 @@
 {
-    "name": "HEY-AI",
-    "description": "HEY-AI",
+    "name": "HEYI",
+    "description": "HEYI",
     "version": "0.0.1",
     "manifest_version": 3,
     "action": {
-        "default_popup": "hey-ai.html",
-        "default_icon": "assets/icon.png"
+        "default_popup": "heyi.html",
+        "default_icon": "assets/heyi_logo.png"
     }
 }
