@@ -55,6 +55,21 @@ body {
     display: block;
 }
 
+.logo-text {
+    font-family: 'Outfit', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: -1.5px;
+    color: var(--text-primary);
+    line-height: 1;
+    user-select: none;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.logo-text span {
+    color: var(--accent-red);
+}
+
 .icon-btn {
     background: transparent;
     border: none;
@@ -291,6 +306,7 @@ body {
     font-family: var(--font-family);
     cursor: pointer;
     transition: all 0.2s ease;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
