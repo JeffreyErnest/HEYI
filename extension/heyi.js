@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    console.log("HEYI VERSION 2.0 - MESSAGING ACTIVE");
     // DOM Elements
     const scanBtn = document.getElementById("scan-btn");
     const scanBtnText = scanBtn.querySelector(".btn-text");
@@ -53,18 +54,51 @@ document.addEventListener("DOMContentLoaded", () => {
         window.requestAnimationFrame(step);
     }
 
+    // Request the background script to perform the scrape
+    async function getPageDetails() {
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage({ action: "SCRAPE_PAGE" }, (response) => {
+                if (chrome.runtime.lastError) {
+                    resolve({ error: chrome.runtime.lastError.message });
+                } else {
+                    resolve(response);
+                }
+            });
+        });
+    }
+
+    // Function to "save" data as a JSON file via download
+    function saveToJsonFile(data) {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `heyi_scan_${Date.now()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+
     // Interactions
-    scanBtn.addEventListener("click", () => {
+    scanBtn.addEventListener("click", async () => {
         // 1. Show loading state on button
         scanBtnText.style.opacity = "0";
         btnLoader.classList.remove("hidden");
         scanBtn.classList.remove("pulse-glow");
 
-        // 2. Simulate network delay (e.g. 1.5s)
+        // 2. Perform actual data extraction
+        const pageData = await getPageDetails();
+        console.log("Extracted Data:", pageData);
+
+        // 3. Save to JSON file as requested
+        saveToJsonFile(pageData);
+
+        // 4. Wait a bit more to simulate "model processing"
         setTimeout(() => {
-            // Determine random result
+            // Determine random result (for now)
             targetConfidence = Math.floor(Math.random() * 101); // 0 to 100
-            // targetConfidence = 98;
 
             if (targetConfidence >= 50) {
                 // AI Detected
@@ -80,7 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 resultIconEl.innerHTML = iconSafe;
             }
 
-            // 3. Swap Views
+            // 5. Swap Views
             viewScan.classList.remove("active");
 
             setTimeout(() => {
@@ -91,14 +125,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 requestAnimationFrame(() => {
                     viewResult.classList.add("active");
 
-                    // 4. Trigger Animations
+                    // 6. Trigger Animations
                     setTimeout(() => {
                         setProgress(targetConfidence);
                         animateValue(confidenceValueEl, 0, targetConfidence, 1500);
                     }, 300); // slight delay after view shows
                 });
             }, 400); // Wait for fade out
-        }, 1500);
+        }, 1000); // simulation delay
     });
 
     scanAgainBtn.addEventListener("click", () => {

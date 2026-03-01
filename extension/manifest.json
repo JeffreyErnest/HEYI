@@ -6,5 +6,12 @@
     "action": {
         "default_popup": "heyi.html",
         "default_icon": "assets/heyi_logo.png"
-    }
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "permissions": [
+        "activeTab",
+        "scripting"
+    ]
 }
