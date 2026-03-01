@@ -31,8 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let targetConfidence = 0;
 
-    // Backend URL — change this when you deploy
-    const BACKEND_URL = "http://localhost:3000";
+    // Backend URL
+    const GRADIO_API_URL = "https://toothsocket-heyi-detector.hf.space/gradio_api/call/analyze_text";
 
     function setProgress(percent) {
         const visibleLength = (percent / 100) * maxDash;
@@ -66,17 +66,77 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Send the scraped text to the backend for AI detection
+    // Send the scraped text to the AI Detector Gradio Space
     async function analyzeText(text) {
         try {
-            const response = await fetch(`${BACKEND_URL}/detect-ai`, {
+            console.log("Sending text to HuggingFace Gradio Space...");
+
+            // Step 1: Request an event_id from the prediction queue
+            // Prevent payload bloat by only sending up to 10,000 characters 
+            // (The AI model will safely truncate everything past 512 tokens anyway, but this gives it the best chunk)
+            const cleanText = text.length > 10000 ? text.substring(0, 10000) : text;
+
+            // --- DEBUG: Save exactly what we are sending ---
+            const blob = new Blob([cleanText], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `heyi_api_payload_${Date.now()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            // -----------------------------------------------
+
+            const response = await fetch(GRADIO_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: text })
+                body: JSON.stringify({ data: [cleanText] }) // Gradio expects input in a "data" array
             });
-            const data = await response.json();
-            console.log("Backend response:", data);
-            return parseFloat(data.aiPercentage) || 0;
+
+            if (!response.ok) {
+                console.error("HTTP error when requesting event_id:", response.status);
+                return -1;
+            }
+
+            const { event_id } = await response.json();
+            if (!event_id) {
+                console.error("Missing event_id in Gradio response.");
+                return -1;
+            }
+
+            console.log("Got Event ID:", event_id);
+
+            // Step 2: Listen for the result via Server-Sent Events (SSE)
+            return new Promise((resolve) => {
+                const es = new EventSource(`${GRADIO_API_URL}/${event_id}`);
+
+                es.addEventListener("complete", (event) => {
+                    es.close(); // Stop listening once we have our result
+                    try {
+                        const resultData = JSON.parse(event.data);
+                        console.log("Gradio complete data:", resultData);
+
+                        // In Gradio 6+, resultData is the array of outputs: [{"aiPercentage": 85.2}]
+                        if (resultData && resultData[0] && resultData[0].aiPercentage !== undefined) {
+                            resolve(parseFloat(resultData[0].aiPercentage));
+                        } else {
+                            console.warn("Unexpected result format:", resultData);
+                            resolve(0);
+                        }
+                    } catch (e) {
+                        console.error("Could not parse event payload:", e);
+                        resolve(0);
+                    }
+                });
+
+                es.addEventListener("error", (err) => {
+                    es.close();
+                    console.error("EventSource error:", err);
+                    resolve(-1);
+                });
+            });
+
         } catch (error) {
             console.error("Backend connection error:", error);
             return -1; // -1 means error (server unreachable)

@@ -10,8 +10,8 @@ def analyze_text(text):
         return {"error": "No text provided", "aiPercentage": 0}
     
     try:
-        # Run inference
-        results = classifier(text)
+        # Run inference and safely truncate text to fit the model's 512 max limit constraint
+        results = classifier(text, truncation=True, max_length=512)
         
         # The model returns a list like: [{'label': 'LABEL_1', 'score': 0.92}]
         # Extract the score for LABEL_1 (AI)
