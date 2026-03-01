@@ -294,7 +294,7 @@ app.get("/api/site-warning", async (req, res) => {
  *  SERVER STARTUP
  * ═══════════════════════════════════════════════════════════════════════ */
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
