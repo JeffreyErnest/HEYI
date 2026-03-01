@@ -22,13 +22,13 @@ app.post('/api/scan-text', async (req, res) => {
       textHash: textHash,
       aiProbabilityScore: aiScore,
       detectedAs: aiScore > 0.5 ? "AI" : "Human",
-      dateScanned: new Date(), 
+      dateScanned: new Date(),
     };
- 
+
     await client.connect(); // Connects to MongoDB
-    const database = client.db("ai_detector_db"); 
+    const database = client.db("ai_detector_db");
     const collection = database.collection("pageScans"); // saves it to the "pageScans" collection
-    
+
     const result = await collection.insertOne(newWebsiteTextScan);
     res.status(201).json({ message: "Scan saved successfully!", documentId: result.insertedId }); // Sends a success message back to the chrome extension
 
@@ -41,82 +41,101 @@ app.post('/api/scan-text', async (req, res) => {
 });
 
 app.post('/api/scan-image', async (req, res) => {
-    try {
-      const { imageHash, aiScore, metadataFound } = req.body; // Grabs the image data sent by the chrome extension
-  
-      // Database Schema
-      const newWebsiteImageScan = {
-        imageHash: imageHash,
-        aiProbabilityScore: aiScore,
-        detectedAs: aiScore > 0.5 ? "AI" : "Human",
-        metadataFound: metadataFound || false, 
-        dateScanned: new Date()
-      };
-  
-      await client.connect(); //Connect to MongoDB
-      const database = client.db("ai_detector_db");
-      const collection = database.collection("imageScans"); // Saves it to the "imageScans" collection
-      
-      const result = await collection.insertOne(newWebsiteImageScan);
-      res.status(201).json({ message: "Image scan saved successfully!", documentId: result.insertedId }); // Send success message back
-  
-    } catch (error) {
-      console.error("Error saving image scan:", error);
-      res.status(500).json({ error: "Failed to save image to database" });
-    } finally {
-      await client.close();
-    }
-  });
+  try {
+    const { imageHash, aiScore, metadataFound } = req.body; // Grabs the image data sent by the chrome extension
 
-  // Make sure you have standard imports like express and a way to parse JSON body
-// app.use(express.json());
+    // Database Schema
+    const newWebsiteImageScan = {
+      imageHash: imageHash,
+      aiProbabilityScore: aiScore,
+      detectedAs: aiScore > 0.5 ? "AI" : "Human",
+      metadataFound: metadataFound || false,
+      dateScanned: new Date()
+    };
+
+    await client.connect(); //Connect to MongoDB
+    const database = client.db("ai_detector_db");
+    const collection = database.collection("imageScans"); // Saves it to the "imageScans" collection
+
+    const result = await collection.insertOne(newWebsiteImageScan);
+    res.status(201).json({ message: "Image scan saved successfully!", documentId: result.insertedId }); // Send success message back
+
+  } catch (error) {
+    console.error("Error saving image scan:", error);
+    res.status(500).json({ error: "Failed to save image to database" });
+  } finally {
+    await client.close();
+  }
+});
 
 app.post('/detect-ai', async (req, res) => {
   try {
-      const textToAnalyze = req.body.text;
+    const textToAnalyze = req.body.text;
 
-      // 1. Send the text to your Hugging Face API
-      // Swap in your REAL username and model name here!
-      const HF_API_URL = "https://api-inference.huggingface.co/models/toothsocket/my-ai-detector";
-      
-      // SECURITY TIP: In a real app, put this token in a .env file!
-      const HF_TOKEN = "YOUR_HUGGING_FACE_ACCESS_TOKEN"; 
+    if (!textToAnalyze || textToAnalyze.trim().length === 0) {
+      return res.json({ aiPercentage: 0, error: "No text provided" });
+    }
 
-      const response = await fetch(HF_API_URL, {
-          method: "POST",
-          headers: {
-              "Authorization": `Bearer ${HF_TOKEN}`,
-              "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ inputs: textToAnalyze })
-      });
+    // HuggingFace Inference API
+    const HF_API_URL = "https://router.huggingface.co/hf-inference/models/toothsocket/ai-detector-50k";
+    const HF_TOKEN = process.env.HF_TOKEN;
 
-      // 2. Parse the result from Hugging Face
-      const result = await response.json();
-      console.log("Hugging Face Raw Result:", JSON.stringify(result));
+    console.log("Sending to HuggingFace:", HF_API_URL);
+    console.log("Text length:", textToAnalyze.length, "characters");
+    console.log("Token present:", !!HF_TOKEN);
 
-      if (result.error) {
-        console.error("HF API Error:", result.error);
-        return res.json({ aiPercentage: 0 });
+    const response = await fetch(HF_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${HF_TOKEN}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ inputs: textToAnalyze })
+    });
+
+    // Read response as text FIRST to avoid JSON parse crashes
+    const rawBody = await response.text();
+    console.log("HF Status:", response.status);
+    console.log("HF Raw Response:", rawBody);
+
+    // If the response is not OK, log and return error
+    if (!response.ok) {
+      console.error(`HuggingFace returned ${response.status}: ${rawBody}`);
+      return res.json({ aiPercentage: 0, error: `HuggingFace error ${response.status}: ${rawBody}` });
+    }
+
+    // Now safely parse as JSON
+    let result;
+    try {
+      result = JSON.parse(rawBody);
+    } catch (parseErr) {
+      console.error("Failed to parse HF response as JSON:", rawBody);
+      return res.json({ aiPercentage: 0, error: "Invalid response from HuggingFace" });
+    }
+
+    console.log("HuggingFace Parsed Result:", JSON.stringify(result));
+
+    if (result.error) {
+      console.error("HF API Error:", result.error);
+      return res.json({ aiPercentage: 0, error: result.error });
+    }
+
+    // Find the "AI" score (LABEL_1) and convert to a clean percentage
+    let aiScore = 0;
+
+    // HuggingFace text-classification returns: [[{label: 'LABEL_1', score: 0.92}, ...]]
+    if (result && result[0]) {
+      const aiData = result[0].find(item => item.label === "LABEL_1");
+      if (aiData) {
+        aiScore = (aiData.score * 100).toFixed(2);
       }
+    }
 
-      // 3. Find the "AI" score (LABEL_1) and convert to a clean percentage
-      let aiScore = 0;
-      
-      // Hugging Face returns an array of arrays like: [[{label: 'LABEL_1', score: 0.92}, ...]]
-      if (result && result[0]) {
-          const aiData = result[0].find(item => item.label === "LABEL_1");
-          if (aiData) {
-              aiScore = (aiData.score * 100).toFixed(2); // Turns 0.9234 into "92.34"
-          }
-      }
-
-      // 4. Send the final clean percentage back to the Chrome Extension
-      res.json({ aiPercentage: aiScore });
+    res.json({ aiPercentage: aiScore });
 
   } catch (error) {
-      console.error("Error analyzing text:", error);
-      res.status(500).json({ error: "Failed to analyze text" });
+    console.error("Error analyzing text:", error);
+    res.status(500).json({ error: "Failed to analyze text", details: error.message });
   }
 });
 

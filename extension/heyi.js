@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("HEYI VERSION 2.0 - MESSAGING ACTIVE");
+    console.log("HEYI VERSION 3.0 - LIVE AI DETECTION");
+
     // DOM Elements
     const scanBtn = document.getElementById("scan-btn");
     const scanBtnText = scanBtn.querySelector(".btn-text");
@@ -11,13 +12,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewResult = document.getElementById("view-result");
 
     const confidenceValueEl = document.getElementById("confidence-value");
-    const progressCircle = document.querySelector(".progress-ring__circle");
 
     // Dynamic text elements
     const resultTitleEl = document.getElementById("result-title");
     const resultSubtitleEl = document.getElementById("result-subtitle");
     const resultDescriptionEl = document.getElementById("result-description");
-    const resultBodyEl = document.querySelector(".result-body");
     const resultIconEl = document.getElementById("result-icon");
 
     // SVGs for Results
@@ -30,9 +29,10 @@ document.addEventListener("DOMContentLoaded", () => {
     arcPath.style.strokeDasharray = `0 ${maxDash}`;
     arcPath.style.strokeDashoffset = 0;
 
-    // We'll generate a target confidence randomly to simulate scans
-    // In a real extension, this would come from the background script API
     let targetConfidence = 0;
+
+    // Backend URL — change this when you deploy
+    const BACKEND_URL = "http://localhost:3000";
 
     function setProgress(percent) {
         const visibleLength = (percent / 100) * maxDash;
@@ -44,7 +44,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const step = (timestamp) => {
             if (!startTimestamp) startTimestamp = timestamp;
             const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-            // using an easeOutQuad easing
             const easeProgress = progress * (2 - progress);
             obj.innerHTML = Math.floor(easeProgress * (end - start) + start) + "%";
             if (progress < 1) {
@@ -54,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         window.requestAnimationFrame(step);
     }
 
-    // Request the background script to perform the scrape
+    // Ask the background script to scrape the active tab
     async function getPageDetails() {
         return new Promise((resolve) => {
             chrome.runtime.sendMessage({ action: "SCRAPE_PAGE" }, (response) => {
@@ -67,141 +66,68 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Function to "save" data as a JSON file via download
-    function saveToJsonFile(data) {
-        const jsonString = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonString], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `heyi_scan_${Date.now()}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 100);
-    }
-
-    async function checkTextForAI(scrapedData) {
+    // Send the scraped text to the backend for AI detection
+    async function analyzeText(text) {
         try {
-            // We take the object from the scraper and turn it into one big string
-            const textToAnalyze = JSON.stringify(scrapedData);
-    
-            const response = await fetch("http://localhost:3000/detect-ai", {
+            const response = await fetch(`${BACKEND_URL}/detect-ai`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: textToAnalyze })
+                body: JSON.stringify({ text: text })
             });
-    
             const data = await response.json();
-            return parseFloat(data.aiPercentage); // returns the 92.34 number
+            console.log("Backend response:", data);
+            return parseFloat(data.aiPercentage) || 0;
         } catch (error) {
-            console.error("Connection to Node server failed:", error);
-            return 0; // Fallback if server is down
+            console.error("Backend connection error:", error);
+            return -1; // -1 means error (server unreachable)
         }
     }
 
-    // Interactions
-    // scanBtn.addEventListener("click", async () => {
-    //     // 1. Show loading state on button
-    //     scanBtnText.style.opacity = "0";
-    //     btnLoader.classList.remove("hidden");
-    //     scanBtn.classList.remove("pulse-glow");
-
-    //     // 2. Perform actual data extraction
-    //     const pageData = await getPageDetails();
-    //     console.log("Extracted Data:", pageData);
-
-    //     // 3. Save to JSON file as requested
-    //     saveToJsonFile(pageData);
-
-    //         // Determine random result (for now)
-    //         targetConfidence = await checkTextForAI(pageData);
-
-    //         if (targetConfidence >= 50) {
-    //             // AI Detected
-    //             resultTitleEl.textContent = "Careful!";
-    //             resultSubtitleEl.textContent = "We think this is an AI posting.";
-    //             resultDescriptionEl.textContent = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
-    //             resultIconEl.innerHTML = iconDanger;
-    //         } else {
-    //             // No AI Detected
-    //             resultTitleEl.textContent = "All good!";
-    //             resultSubtitleEl.textContent = "We don't detect AI on this page.";
-    //             resultDescriptionEl.textContent = "The content on this page appears to be human-written and organic. Happy browsing!";
-    //             resultIconEl.innerHTML = iconSafe;
-    //         }
-
-    //         // 5. Swap Views
-    //         viewScan.classList.remove("active");
-
-    //         setTimeout(() => {
-    //             viewScan.classList.add("hidden");
-    //             viewResult.classList.remove("hidden");
-
-    //             // Allow browser to render display:block before fading in
-    //             requestAnimationFrame(() => {
-    //                 viewResult.classList.add("active");
-
-    //                 // 6. Trigger Animations
-    //                 setTimeout(() => {
-    //                     setProgress(targetConfidence);
-    //                     animateValue(confidenceValueEl, 0, targetConfidence, 1500);
-    //                 }, 300); // slight delay after view shows
-    //             });
-    //         }, 400); // Wait for fade out
-    // });
-
-    // scanAgainBtn.addEventListener("click", () => {
-    //     // Reset everything
-    //     viewResult.classList.remove("active");
-
-    //     setTimeout(() => {
-    //         viewResult.classList.add("hidden");
-    //         viewScan.classList.remove("hidden");
-
-    //         // Reset Progress state
-    //         setProgress(0);
-    //         confidenceValueEl.innerHTML = "0%";
-
-    //         // Reset Button State
-    //         scanBtnText.style.opacity = "1";
-    //         btnLoader.classList.add("hidden");
-    //         scanBtn.classList.add("pulse-glow");
-
-    //         requestAnimationFrame(() => {
-    //             viewScan.classList.add("active");
-    //         });
-    //     }, 400); // Wait for fade out
-    // });
+    // ── SCAN BUTTON ──
     scanBtn.addEventListener("click", async () => {
-        // 1. Loading state
+        // 1. Show loading state
         scanBtnText.style.opacity = "0";
         btnLoader.classList.remove("hidden");
         scanBtn.classList.remove("pulse-glow");
 
-        // 2. Data extraction
+        // 2. Scrape the active tab
         const pageData = await getPageDetails();
-        
-        // 3. Save JSON
-        saveToJsonFile(pageData);
+        console.log("Scraped page data:", pageData);
 
-        // 4. CALL THE MODEL (This is where it waits for the server)
-        targetConfidence = await checkTextForAI(pageData);
+        if (pageData.error) {
+            console.error("Scrape error:", pageData.error);
+            scanBtnText.textContent = "Error";
+            scanBtnText.style.opacity = "1";
+            btnLoader.classList.add("hidden");
+            return;
+        }
 
-        // 5. Update UI based on REAL results
-        if (targetConfidence >= 50) {
+        // 3. Send text to backend → HuggingFace model → get real score
+        targetConfidence = await analyzeText(pageData.text);
+
+        // 4. Update UI with the REAL result
+        if (targetConfidence === -1) {
+            // Backend unreachable
+            resultTitleEl.textContent = "Oops!";
+            resultSubtitleEl.textContent = "Could not reach the analysis server.";
+            resultDescriptionEl.textContent = "Make sure the backend server is running on localhost:3000. Start it with: node server.js";
+            resultIconEl.innerHTML = iconDanger;
+            targetConfidence = 0;
+        } else if (targetConfidence >= 50) {
+            // AI Detected
             resultTitleEl.textContent = "Careful!";
-            // Use the real percentage in the subtitle!
-            resultSubtitleEl.textContent = `We are ${targetConfidence}% sure this is AI.`; 
+            resultSubtitleEl.textContent = `We are ${targetConfidence}% sure this is AI.`;
+            resultDescriptionEl.textContent = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
             resultIconEl.innerHTML = iconDanger;
         } else {
+            // Human content
             resultTitleEl.textContent = "All good!";
             resultSubtitleEl.textContent = "Human-written content detected.";
+            resultDescriptionEl.textContent = "The content on this page appears to be human-written and organic. Happy browsing!";
             resultIconEl.innerHTML = iconSafe;
         }
 
-        // 6. SWAP VIEWS
-        // We move this DOWN here so it only happens AFTER the server responds
+        // 5. Swap views (only AFTER the server responds)
         viewScan.classList.remove("active");
 
         setTimeout(() => {
@@ -210,16 +136,42 @@ document.addEventListener("DOMContentLoaded", () => {
 
             requestAnimationFrame(() => {
                 viewResult.classList.add("active");
+
+                // 6. Animate the ring with the REAL score
                 setTimeout(() => {
                     setProgress(targetConfidence);
                     animateValue(confidenceValueEl, 0, targetConfidence, 1500);
                 }, 300);
             });
-        }, 400); 
+        }, 400);
     });
 
-    // Close Popup
+    // ── SCAN AGAIN BUTTON ──
+    scanAgainBtn.addEventListener("click", () => {
+        viewResult.classList.remove("active");
+
+        setTimeout(() => {
+            viewResult.classList.add("hidden");
+            viewScan.classList.remove("hidden");
+
+            // Reset progress ring
+            setProgress(0);
+            confidenceValueEl.innerHTML = "0%";
+
+            // Reset button state
+            scanBtnText.textContent = "Scan Page";
+            scanBtnText.style.opacity = "1";
+            btnLoader.classList.add("hidden");
+            scanBtn.classList.add("pulse-glow");
+
+            requestAnimationFrame(() => {
+                viewScan.classList.add("active");
+            });
+        }, 400);
+    });
+
+    // ── CLOSE POPUP ──
     closeBtn.addEventListener("click", () => {
-        window.close(); // Only works when running as a real popup
+        window.close();
     });
 });
