@@ -19,12 +19,12 @@ async function scrapeCurrentTab() {
             target: { tabId: tab.id },
             func: () => {
                 // Better scraping: Get only useful content (Headers and Paragraphs)
-                const textNodes = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, p'));
+                const textNodes = Array.from(document.querySelectorAll('h1, p'));
 
                 // Extract text, filter out empty space or useless tiny strings, and join them.
                 const cleanText = textNodes
                     .map(el => el.innerText.trim())
-                    .filter(text => text.length > 10) // Ignore noisy 1-2 word elements like "cart" or "menu"
+                    .filter(text => text.length > 60) // Require at least 60 characters (removes nav/headers/footers)
                     .join('\n\n');
 
                 return {
