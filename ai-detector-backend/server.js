@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { MongoClient } = require('mongodb');
+const { GoogleGenAI, Type, Schema } = require('@google/genai');
 require('dotenv').config();
 
 const app = express();
@@ -136,6 +137,89 @@ app.post('/detect-ai', async (req, res) => {
   } catch (error) {
     console.error("Error analyzing text:", error);
     res.status(500).json({ error: "Failed to analyze text", details: error.message });
+  }
+});
+
+// Gemini Image Verification Endpoint
+app.post('/api/verify-image', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+
+    if (!imageUrl) {
+      return res.status(400).json({ error: "No image URL provided" });
+    }
+
+    // Initialize Gemini SDK
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    // Fetch the image from the URL as an ArrayBuffer
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = response.headers.get('content-type') || 'image/jpeg';
+
+    // Set up the system instructions and prompt
+    const systemInstruction = `You are a forensic image analyst specializing in detecting AI-generated images. \
+Analyze the provided image for common AI artifacts such as:
+- Asymmetrical or physically impossible geometry (e.g. 6 fingers, floating limbs).
+- Garbled, melted, or nonsensical background text.
+- Inconsistent lighting sources or missing shadows.
+- AI watermarks.
+- Overly smooth, "plastic", or surreal aesthetic typical of diffusion models.
+
+Respond with a JSON object. Ensure \`aiPercentage\` is a number between 0 and 100 representing your confidence that the image is AI generated. \`reasoning\` should be a concise 1-3 sentence explanation of your findings.`;
+
+    const prompt = "Please analyze this image and specify if it is AI-generated.";
+
+    // Call Gemini API and strictly request JSON output
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        prompt,
+        {
+          inlineData: {
+            data: buffer.toString("base64"),
+            mimeType: mimeType
+          }
+        }
+      ],
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            aiPercentage: {
+              type: Type.NUMBER,
+              description: "Confidence percentage from 0 to 100 that the image is AI generated."
+            },
+            reasoning: {
+              type: Type.STRING,
+              description: "A concise 1-3 sentence explanation of the findings."
+            }
+          },
+          required: ["aiPercentage", "reasoning"],
+        },
+      }
+    });
+
+    const outputText = result.text;
+    console.log("Gemini API Output:", outputText);
+
+    // Parse the JSON response
+    const jsonResult = JSON.parse(outputText);
+
+    res.json({
+      aiPercentage: jsonResult.aiPercentage,
+      reasoning: jsonResult.reasoning
+    });
+
+  } catch (error) {
+    console.error("Error verifying image with Gemini:", error);
+    res.status(500).json({ error: "Failed to verify image", details: error.message });
   }
 });
 

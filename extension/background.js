@@ -27,10 +27,25 @@ async function scrapeCurrentTab() {
                     .filter(text => text.length > 60) // Require at least 60 characters (removes nav/headers/footers)
                     .join('\n\n');
 
+                // Better Image Scraping: Find the largest image on the page (skip logos/icons)
+                const validImages = Array.from(document.images)
+                    .filter(img => img.src && img.src.startsWith('http')) // Must be a real web URL
+                    .map(img => {
+                        return {
+                            src: img.src,
+                            area: img.width * img.height // Calculate visual footprint
+                        };
+                    })
+                    .filter(imgData => imgData.area > 10000) // Ignore tiny logos/icons (e.g. 100x100 logo = 10k area)
+                    .sort((a, b) => b.area - a.area); // Sort largest to smallest
+
+                // Extract just the sorted URLs
+                const sortedImageUrls = validImages.map(imgData => imgData.src);
+
                 return {
                     url: window.location.href,
                     text: cleanText,
-                    images: Array.from(document.images).map(img => img.src).filter(src => src && src.startsWith('http')),
+                    images: sortedImageUrls,
                     timestamp: new Date().toISOString()
                 };
             }

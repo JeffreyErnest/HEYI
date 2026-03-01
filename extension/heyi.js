@@ -31,8 +31,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let targetConfidence = 0;
 
-    // Backend URL
+    // Backend URLs
     const GRADIO_API_URL = "https://toothsocket-heyi-detector.hf.space/gradio_api/call/analyze_text";
+    const IMAGE_API_URL = "http://localhost:3000/api/verify-image";
 
     function setProgress(percent) {
         const visibleLength = (percent / 100) * maxDash;
@@ -143,6 +144,35 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Send the most prominent image to Gemini for AI verification
+    async function analyzeImage(imageUrl) {
+        if (!imageUrl) return 0; // Return a default score of 0 if there are no images
+
+        try {
+            console.log("Sending image to Gemini Backend API...");
+
+            const response = await fetch(IMAGE_API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageUrl: imageUrl })
+            });
+
+            if (!response.ok) {
+                console.error("HTTP error when verifying image:", response.status);
+                return -1;
+            }
+
+            const data = await response.json();
+            console.log("Gemini Image Verification Result:", data);
+
+            return data.aiPercentage || 0;
+
+        } catch (error) {
+            console.error("Image verification connection error:", error);
+            return -1;
+        }
+    }
+
     // ── SCAN BUTTON ──
     scanBtn.addEventListener("click", async () => {
         // 1. Show loading state
@@ -162,8 +192,36 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // 3. Send text to backend → HuggingFace model → get real score
-        targetConfidence = await analyzeText(pageData.text);
+        // 3. Select a primary image to scan (using the first one found, if any exist)
+        const primaryImageUrl = (pageData.images && pageData.images.length > 0) ? pageData.images[0] : null;
+
+        // 4. Send text AND image to their respective AI backends concurrently
+        let textConfidence = 0;
+        let imageConfidence = 0;
+
+        try {
+            [textConfidence, imageConfidence] = await Promise.all([
+                analyzeText(pageData.text),
+                analyzeImage(primaryImageUrl)
+            ]);
+        } catch (err) {
+            console.error("Error running parallel analysis:", err);
+            targetConfidence = -1;
+        }
+
+        // 5. Calculate Final Blended Score
+        // If either backend went unreachable, fail gracefully.
+        if (textConfidence === -1 || imageConfidence === -1 || targetConfidence === -1) {
+            targetConfidence = -1;
+        } else if (primaryImageUrl) {
+            // Both text and image were evaluated, average them!
+            targetConfidence = (textConfidence + imageConfidence) / 2;
+            console.log(`Blended Score: (Text: ${textConfidence}% + Image: ${imageConfidence}%) / 2 = ${targetConfidence}%`);
+        } else {
+            // Text only (no images on page)
+            targetConfidence = textConfidence;
+            console.log(`Text-Only Score: ${targetConfidence}%`);
+        }
 
         // 4. Update UI with the REAL result
         if (targetConfidence === -1) {
