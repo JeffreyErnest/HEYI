@@ -81,81 +81,141 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => URL.revokeObjectURL(url), 100);
     }
 
+    async function checkTextForAI(scrapedData) {
+        try {
+            // We take the object from the scraper and turn it into one big string
+            const textToAnalyze = JSON.stringify(scrapedData);
+    
+            const response = await fetch("http://localhost:3000/detect-ai", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: textToAnalyze })
+            });
+    
+            const data = await response.json();
+            return parseFloat(data.aiPercentage); // returns the 92.34 number
+        } catch (error) {
+            console.error("Connection to Node server failed:", error);
+            return 0; // Fallback if server is down
+        }
+    }
+
     // Interactions
+    // scanBtn.addEventListener("click", async () => {
+    //     // 1. Show loading state on button
+    //     scanBtnText.style.opacity = "0";
+    //     btnLoader.classList.remove("hidden");
+    //     scanBtn.classList.remove("pulse-glow");
+
+    //     // 2. Perform actual data extraction
+    //     const pageData = await getPageDetails();
+    //     console.log("Extracted Data:", pageData);
+
+    //     // 3. Save to JSON file as requested
+    //     saveToJsonFile(pageData);
+
+    //         // Determine random result (for now)
+    //         targetConfidence = await checkTextForAI(pageData);
+
+    //         if (targetConfidence >= 50) {
+    //             // AI Detected
+    //             resultTitleEl.textContent = "Careful!";
+    //             resultSubtitleEl.textContent = "We think this is an AI posting.";
+    //             resultDescriptionEl.textContent = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
+    //             resultIconEl.innerHTML = iconDanger;
+    //         } else {
+    //             // No AI Detected
+    //             resultTitleEl.textContent = "All good!";
+    //             resultSubtitleEl.textContent = "We don't detect AI on this page.";
+    //             resultDescriptionEl.textContent = "The content on this page appears to be human-written and organic. Happy browsing!";
+    //             resultIconEl.innerHTML = iconSafe;
+    //         }
+
+    //         // 5. Swap Views
+    //         viewScan.classList.remove("active");
+
+    //         setTimeout(() => {
+    //             viewScan.classList.add("hidden");
+    //             viewResult.classList.remove("hidden");
+
+    //             // Allow browser to render display:block before fading in
+    //             requestAnimationFrame(() => {
+    //                 viewResult.classList.add("active");
+
+    //                 // 6. Trigger Animations
+    //                 setTimeout(() => {
+    //                     setProgress(targetConfidence);
+    //                     animateValue(confidenceValueEl, 0, targetConfidence, 1500);
+    //                 }, 300); // slight delay after view shows
+    //             });
+    //         }, 400); // Wait for fade out
+    // });
+
+    // scanAgainBtn.addEventListener("click", () => {
+    //     // Reset everything
+    //     viewResult.classList.remove("active");
+
+    //     setTimeout(() => {
+    //         viewResult.classList.add("hidden");
+    //         viewScan.classList.remove("hidden");
+
+    //         // Reset Progress state
+    //         setProgress(0);
+    //         confidenceValueEl.innerHTML = "0%";
+
+    //         // Reset Button State
+    //         scanBtnText.style.opacity = "1";
+    //         btnLoader.classList.add("hidden");
+    //         scanBtn.classList.add("pulse-glow");
+
+    //         requestAnimationFrame(() => {
+    //             viewScan.classList.add("active");
+    //         });
+    //     }, 400); // Wait for fade out
+    // });
     scanBtn.addEventListener("click", async () => {
-        // 1. Show loading state on button
+        // 1. Loading state
         scanBtnText.style.opacity = "0";
         btnLoader.classList.remove("hidden");
         scanBtn.classList.remove("pulse-glow");
 
-        // 2. Perform actual data extraction
+        // 2. Data extraction
         const pageData = await getPageDetails();
-        console.log("Extracted Data:", pageData);
-
-        // 3. Save to JSON file as requested
+        
+        // 3. Save JSON
         saveToJsonFile(pageData);
 
-        // 4. Wait a bit more to simulate "model processing"
-        setTimeout(() => {
-            // Determine random result (for now)
-            targetConfidence = Math.floor(Math.random() * 101); // 0 to 100
+        // 4. CALL THE MODEL (This is where it waits for the server)
+        targetConfidence = await checkTextForAI(pageData);
 
-            if (targetConfidence >= 50) {
-                // AI Detected
-                resultTitleEl.textContent = "Careful!";
-                resultSubtitleEl.textContent = "We think this is an AI posting.";
-                resultDescriptionEl.textContent = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
-                resultIconEl.innerHTML = iconDanger;
-            } else {
-                // No AI Detected
-                resultTitleEl.textContent = "All good!";
-                resultSubtitleEl.textContent = "We don't detect AI on this page.";
-                resultDescriptionEl.textContent = "The content on this page appears to be human-written and organic. Happy browsing!";
-                resultIconEl.innerHTML = iconSafe;
-            }
+        // 5. Update UI based on REAL results
+        if (targetConfidence >= 50) {
+            resultTitleEl.textContent = "Careful!";
+            // Use the real percentage in the subtitle!
+            resultSubtitleEl.textContent = `We are ${targetConfidence}% sure this is AI.`; 
+            resultIconEl.innerHTML = iconDanger;
+        } else {
+            resultTitleEl.textContent = "All good!";
+            resultSubtitleEl.textContent = "Human-written content detected.";
+            resultIconEl.innerHTML = iconSafe;
+        }
 
-            // 5. Swap Views
-            viewScan.classList.remove("active");
-
-            setTimeout(() => {
-                viewScan.classList.add("hidden");
-                viewResult.classList.remove("hidden");
-
-                // Allow browser to render display:block before fading in
-                requestAnimationFrame(() => {
-                    viewResult.classList.add("active");
-
-                    // 6. Trigger Animations
-                    setTimeout(() => {
-                        setProgress(targetConfidence);
-                        animateValue(confidenceValueEl, 0, targetConfidence, 1500);
-                    }, 300); // slight delay after view shows
-                });
-            }, 400); // Wait for fade out
-        }, 1000); // simulation delay
-    });
-
-    scanAgainBtn.addEventListener("click", () => {
-        // Reset everything
-        viewResult.classList.remove("active");
+        // 6. SWAP VIEWS
+        // We move this DOWN here so it only happens AFTER the server responds
+        viewScan.classList.remove("active");
 
         setTimeout(() => {
-            viewResult.classList.add("hidden");
-            viewScan.classList.remove("hidden");
-
-            // Reset Progress state
-            setProgress(0);
-            confidenceValueEl.innerHTML = "0%";
-
-            // Reset Button State
-            scanBtnText.style.opacity = "1";
-            btnLoader.classList.add("hidden");
-            scanBtn.classList.add("pulse-glow");
+            viewScan.classList.add("hidden");
+            viewResult.classList.remove("hidden");
 
             requestAnimationFrame(() => {
-                viewScan.classList.add("active");
+                viewResult.classList.add("active");
+                setTimeout(() => {
+                    setProgress(targetConfidence);
+                    animateValue(confidenceValueEl, 0, targetConfidence, 1500);
+                }, 300);
             });
-        }, 400); // Wait for fade out
+        }, 400); 
     });
 
     // Close Popup
