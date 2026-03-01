@@ -1,7 +1,7 @@
 /**
- * server.js — HEYI Backend API Server
+ * server.js is the HEYI Backend API Server
  *
- * Provides the following endpoints:
+ * This does the following:
  *   POST /detect-ai         — HuggingFace text classification proxy
  *   POST /api/verify-image  — Gemini image verification proxy
  *   POST /api/scan-text     — Save text scan results to MongoDB
@@ -15,43 +15,19 @@ const { MongoClient } = require("mongodb");
 const { GoogleGenAI, Type } = require("@google/genai");
 require("dotenv").config();
 
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  APP SETUP
- * ═══════════════════════════════════════════════════════════════════════ */
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-/** MongoDB connection (IPv4 forced — MongoDB Atlas requires it) */
 const uri = process.env.MONGO_URI;
-const client = new MongoClient(uri, { family: 4 });
-
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  HELPERS
- * ═══════════════════════════════════════════════════════════════════════ */
-
-/**
- * Get a MongoDB collection by name from the ai_detector_db database.
- * @param {string} name - Collection name (e.g. "pageScans", "imageScans")
- * @returns {import("mongodb").Collection}
- */
+const client = new MongoClient(uri, { family: 4 }); // MongoDB uses IPv4 so we must force it to use IPv4
 function getCollection(name) {
   return client.db("ai_detector_db").collection(name);
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  ROUTE: Save Text Scan
- *  POST /api/scan-text
- *
- *  Expects: { url, textHash, aiScore }
- *  aiScore should be a decimal (e.g. 0.85 = 85%)
- * ═══════════════════════════════════════════════════════════════════════ */
-
+// This function saves a text scan to the database
 app.post("/api/scan-text", async (req, res) => {
   try {
     const { url, aiScore, textHash } = req.body;
@@ -73,14 +49,7 @@ app.post("/api/scan-text", async (req, res) => {
   }
 });
 
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  ROUTE: Save Image Scan
- *  POST /api/scan-image
- *
- *  Expects: { imageHash, aiScore, metadataFound }
- * ═══════════════════════════════════════════════════════════════════════ */
-
+// Saves an image scan to the MongoDB database
 app.post("/api/scan-image", async (req, res) => {
   try {
     const { imageHash, aiScore, metadataFound } = req.body;
@@ -103,14 +72,8 @@ app.post("/api/scan-image", async (req, res) => {
 });
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  ROUTE: AI Text Detection (HuggingFace Proxy)
- *  POST /detect-ai
- *
- *  Expects: { text }
- *  Returns: { aiPercentage }  (0–100)
- * ═══════════════════════════════════════════════════════════════════════ */
 
+// Uses the model we trained on hugging face and determine if the text is AI or not
 app.post("/detect-ai", async (req, res) => {
   try {
     const textToAnalyze = req.body.text;
@@ -134,8 +97,7 @@ app.post("/detect-ai", async (req, res) => {
       body: JSON.stringify({ inputs: textToAnalyze }),
     });
 
-    // Read as text first to avoid JSON.parse crashes on HTML error pages
-    const rawBody = await response.text();
+    const rawBody = await response.text(); // Read as text first to avoid JSON.parse crashes on HTML error pages
     console.log("HF Status:", response.status);
 
     if (!response.ok) {
@@ -143,7 +105,7 @@ app.post("/detect-ai", async (req, res) => {
       return res.json({ aiPercentage: 0, error: `HuggingFace error ${response.status}: ${rawBody}` });
     }
 
-    // Safely parse the response body
+    // Go through the response body
     let result;
     try {
       result = JSON.parse(rawBody);
@@ -175,15 +137,7 @@ app.post("/detect-ai", async (req, res) => {
   }
 });
 
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  ROUTE: Gemini Image Verification
- *  POST /api/verify-image
- *
- *  Expects: { imageUrl }
- *  Returns: { aiPercentage, reasoning }
- * ═══════════════════════════════════════════════════════════════════════ */
-
+// Uses Google Gemini API to scan the images for AI generated content
 app.post("/api/verify-image", async (req, res) => {
   try {
     const { imageUrl } = req.body;
@@ -192,11 +146,9 @@ app.post("/api/verify-image", async (req, res) => {
       return res.status(400).json({ error: "No image URL provided" });
     }
 
-    // Initialize Google Gemini SDK
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Initializes the Google Gemini SDK
 
-    // Fetch the image as a binary buffer
-    const imgResponse = await fetch(imageUrl);
+    const imgResponse = await fetch(imageUrl); // Fetch the image as a binary buffer
     if (!imgResponse.ok) throw new Error(`Failed to fetch image: ${imgResponse.status}`);
 
     const arrayBuffer = await imgResponse.arrayBuffer();
@@ -260,21 +212,15 @@ Respond with a JSON object. Ensure \`aiPercentage\` is a number between 0 and 10
 });
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  ROUTE: Site Warning Lookup
- *  GET /api/site-warning?url=https://example.com/page
- *
- *  Checks whether the domain has ever been flagged as AI in the DB.
- *  Used by background.js to fire proactive Chrome notifications.
- * ═══════════════════════════════════════════════════════════════════════ */
 
+ // Checks whether the domain has ever been flagged as AI in the DB.
+ // Used by background.js to fire proactive Chrome notifications.
 app.get("/api/site-warning", async (req, res) => {
   try {
     const urlToCheck = req.query.url;
     if (!urlToCheck) return res.json({ warn: false });
 
-    // Extract the hostname (e.g. "temu.com" from "https://www.temu.com/shoes")
-    const domain = new URL(urlToCheck).hostname;
+    const domain = new URL(urlToCheck).hostname; // Extract the hostname
 
     const aiFlags = await getCollection("pageScans").countDocuments({
       url: { $regex: domain, $options: "i" },
@@ -289,23 +235,19 @@ app.get("/api/site-warning", async (req, res) => {
   }
 });
 
-
-/* ═══════════════════════════════════════════════════════════════════════
- *  SERVER STARTUP
- * ═══════════════════════════════════════════════════════════════════════ */
-
+// Servert startup
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
     await client.connect();
-    console.log("✅ Successfully connected to MongoDB!");
+    console.log("Successfully connected to MongoDB");
 
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+      console.log(`Server is running on Render`);
     });
   } catch (err) {
-    console.error("❌ Failed to connect to MongoDB", err);
+    console.error("Failed to connect to MongoDB", err);
   }
 }
 

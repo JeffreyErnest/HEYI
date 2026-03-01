@@ -8,40 +8,26 @@
  */
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  PAGE SCRAPER
- *
- *  Runs inside the active tab via chrome.scripting.executeScript.
- *  Extracts meaningful text (h1, p with 60+ chars) and the largest
- *  images (area > 10,000 px²), sorted by visual footprint.
- * ═══════════════════════════════════════════════════════════════════════ */
-
-/**
- * Inject a content script into the active tab to scrape text and images.
- * @returns {Promise<Object>} { url, text, images[], timestamp } or { error }
- */
+// Scrape the current tab for referencing DB to see if this is flagged as AI often
 async function scrapeCurrentTab() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-        // Guard: can't scrape chrome:// or empty tabs
-        if (!tab || !tab.id || tab.url.startsWith("chrome://")) {
+        if (!tab || !tab.id || tab.url.startsWith("chrome://")) { // Can't scrape chrome:// or empty tabs
             return { error: "Cannot scan system pages." };
         }
 
         const results = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: () => {
-                // ── Text extraction ──
-                // Target only semantic content elements, skip nav/footer noise
+                // Targets only semantic content elements, we do this so the AI is not confused about company logos or other random non-important headers or words on the website
                 const textNodes = Array.from(document.querySelectorAll("h1, p"));
                 const cleanText = textNodes
                     .map((el) => el.innerText.trim())
                     .filter((text) => text.length > 60) // skip tiny strings (icons, labels)
                     .join("\n\n");
 
-                // ── Image extraction ──
-                // Score images by visual area, discard tiny icons/logos
+                // Scores images by visual area, discard tiny icons/logos (As for ecommerce websites, the products are the largest images)
                 const validImages = Array.from(document.images)
                     .filter((img) => img.src && img.src.startsWith("http"))
                     .map((img) => ({ src: img.src, area: img.width * img.height }))
@@ -65,13 +51,7 @@ async function scrapeCurrentTab() {
 }
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  MESSAGE LISTENER
- *
- *  The popup (heyi.js) sends { action: "SCRAPE_PAGE" }.
- *  We run the scraper and respond asynchronously.
- * ═══════════════════════════════════════════════════════════════════════ */
-
+// sends scraped web data and waits for response from server
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === "SCRAPE_PAGE") {
         console.log("Scraping request received...");
@@ -84,18 +64,11 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 });
 
 
-/* ═══════════════════════════════════════════════════════════════════════
- *  TAB WATCHER — Passive AI Warning
- *
- *  When any tab finishes loading, check the backend to see if that
- *  domain has been previously flagged for AI content. If so, fire a
- *  native Chrome notification to alert the user proactively.
- * ═══════════════════════════════════════════════════════════════════════ */
 
+ // When any tab finishes loading, check the backend to see if that domain has been previously flagged for AI content. If so, fire a native Chrome notification to alert the user proactively.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     // Only trigger when the page fully loads and is a real website
     if (changeInfo.status !== "complete" || !tab.url || !tab.url.startsWith("http")) return;
-
     fetch(`https://heyi-a7j1.onrender.com/api/site-warning?url=${encodeURIComponent(tab.url)}`)
         .then((res) => res.json())
         .then((data) => {
