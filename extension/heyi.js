@@ -77,18 +77,6 @@ document.addEventListener("DOMContentLoaded", () => {
             // (The AI model will safely truncate everything past 512 tokens anyway, but this gives it the best chunk)
             const cleanText = text.length > 10000 ? text.substring(0, 10000) : text;
 
-            // --- DEBUG: Save exactly what we are sending ---
-            const blob = new Blob([cleanText], { type: "text/plain" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `heyi_api_payload_${Date.now()}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            // -----------------------------------------------
-
             const response = await fetch(GRADIO_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -146,7 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Send the most prominent image to Gemini for AI verification
     async function analyzeImage(imageUrl) {
-        if (!imageUrl) return 0; // Return a default score of 0 if there are no images
+        if (!imageUrl) return { score: 0, reasoning: "" }; // Handle no image
 
         try {
             console.log("Sending image to Gemini Backend API...");
@@ -159,17 +147,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!response.ok) {
                 console.error("HTTP error when verifying image:", response.status);
-                return -1;
+                return { score: -1, reasoning: "Failed to verify image due to a server error." };
             }
 
             const data = await response.json();
             console.log("Gemini Image Verification Result:", data);
 
-            return data.aiPercentage || 0;
+            // Return BOTH the score and the reasoning
+            return {
+                score: data.aiPercentage || 0,
+                reasoning: data.reasoning || "No reasoning provided."
+            };
 
         } catch (error) {
             console.error("Image verification connection error:", error);
-            return -1;
+            return { score: -1, reasoning: "Failed to connect to the image analysis server." };
         }
     }
 
@@ -197,13 +189,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // 4. Send text AND image to their respective AI backends concurrently
         let textConfidence = 0;
-        let imageConfidence = 0;
+        let imageResult = { score: 0, reasoning: "" };
 
         try {
-            [textConfidence, imageConfidence] = await Promise.all([
+            [textConfidence, imageResult] = await Promise.all([
                 analyzeText(pageData.text),
                 analyzeImage(primaryImageUrl)
             ]);
+            if (textConfidence !== -1) saveResultsToDB(pageData, textConfidence, "text");
+            if (imageResult.score !== -1 && primaryImageUrl) saveResultsToDB(pageData, imageResult.score, "image");
         } catch (err) {
             console.error("Error running parallel analysis:", err);
             targetConfidence = -1;
@@ -211,6 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // 5. Calculate Final Blended Score
         // If either backend went unreachable, fail gracefully.
+        let imageConfidence = imageResult.score;
         if (textConfidence === -1 || imageConfidence === -1 || targetConfidence === -1) {
             targetConfidence = -1;
         } else if (primaryImageUrl) {
@@ -235,13 +230,21 @@ document.addEventListener("DOMContentLoaded", () => {
             // AI Detected
             resultTitleEl.textContent = "Careful!";
             resultSubtitleEl.textContent = `We are ${targetConfidence}% sure this is AI.`;
-            resultDescriptionEl.textContent = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
+            let descriptionHTML = "This page exhibits patterns commonly found in AI-generated text. Proceed with caution when buying or evaluating.";
+            if (imageResult.reasoning) {
+                descriptionHTML += `<br><br><strong>Image Insights:</strong> ${imageResult.reasoning}`;
+            }
+            resultDescriptionEl.innerHTML = descriptionHTML;
             resultIconEl.innerHTML = iconDanger;
         } else {
             // Human content
             resultTitleEl.textContent = "All good!";
             resultSubtitleEl.textContent = "Human-written content detected.";
-            resultDescriptionEl.textContent = "The content on this page appears to be human-written and organic. Happy browsing!";
+            let descriptionHTML = "The content on this page appears to be human-written and organic. Happy browsing!";
+            if (imageResult.reasoning) {
+                descriptionHTML += `<br><br><strong>Image Insights:</strong> ${imageResult.reasoning}`;
+            }
+            resultDescriptionEl.innerHTML = descriptionHTML;
             resultIconEl.innerHTML = iconSafe;
         }
 
@@ -287,6 +290,33 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }, 400);
     });
+
+    async function saveResultsToDB(pageData, aiScore, type) {
+        const endpoint = type === "image" ? "http://localhost:3000/api/scan-image" : "http://localhost:3000/api/scan-text";
+        
+        // Match the payload to what your server.js schema expects!
+        // server.js expects aiScore as a decimal (e.g. 0.85), so we divide by 100
+        const payload = type === "image" ? {
+            imageHash: pageData.images[0], // Using URL as a unique identifier
+            aiScore: aiScore / 100, 
+            metadataFound: false
+        } : {
+            url: pageData.url,
+            textHash: pageData.text.substring(0, 50), // Send a snippet as a hash
+            aiScore: aiScore / 100
+        };
+
+        try {
+            await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            console.log(`✅ ${type} scan saved to MongoDB!`);
+        } catch (err) {
+            console.error(`❌ Failed to save ${type} scan to DB:`, err);
+        }
+    }
 
     // ── CLOSE POPUP ──
     closeBtn.addEventListener("click", () => {

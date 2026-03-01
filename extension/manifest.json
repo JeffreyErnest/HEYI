@@ -12,7 +12,8 @@
     },
     "permissions": [
         "activeTab",
-        "scripting"
+        "scripting",
+        "notifications"
     ],
     "host_permissions": [
         "http://localhost:3000/*"

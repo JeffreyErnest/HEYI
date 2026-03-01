@@ -26,7 +26,6 @@ app.post('/api/scan-text', async (req, res) => {
       dateScanned: new Date(),
     };
 
-    await client.connect(); // Connects to MongoDB
     const database = client.db("ai_detector_db");
     const collection = database.collection("pageScans"); // saves it to the "pageScans" collection
 
@@ -36,8 +35,6 @@ app.post('/api/scan-text', async (req, res) => {
   } catch (error) {
     console.error("Error saving scan:", error);
     res.status(500).json({ error: "Failed to save to database" });
-  } finally {
-    await client.close(); // Close the connection
   }
 });
 
@@ -49,12 +46,11 @@ app.post('/api/scan-image', async (req, res) => {
     const newWebsiteImageScan = {
       imageHash: imageHash,
       aiProbabilityScore: aiScore,
-      detectedAs: aiScore > 0.5 ? "AI" : "Human",
       metadataFound: metadataFound || false,
+      detectedAs: aiScore > 0.5 ? "AI" : "Human",
       dateScanned: new Date()
     };
 
-    await client.connect(); //Connect to MongoDB
     const database = client.db("ai_detector_db");
     const collection = database.collection("imageScans"); // Saves it to the "imageScans" collection
 
@@ -64,8 +60,6 @@ app.post('/api/scan-image', async (req, res) => {
   } catch (error) {
     console.error("Error saving image scan:", error);
     res.status(500).json({ error: "Failed to save image to database" });
-  } finally {
-    await client.close();
   }
 });
 
@@ -223,8 +217,53 @@ Respond with a JSON object. Ensure \`aiPercentage\` is a number between 0 and 10
   }
 });
 
+app.get('/api/site-warning', async (req, res) => {
+  try {
+    const urlToCheck = req.query.url;
+    if (!urlToCheck) return res.json({ warn: false });
+
+    // Extract just the main domain (e.g., "temu.com" from "https://www.temu.com/shoes")
+    const urlObj = new URL(urlToCheck);
+    const domain = urlObj.hostname;
+
+    const database = client.db("ai_detector_db");
+    const collection = database.collection("pageScans");
+
+    // Check if this domain has EVER been flagged as AI in your database
+    const aiFlags = await collection.countDocuments({
+      url: { $regex: domain, $options: "i" }, // Searches for the domain in any saved URL
+      detectedAs: "AI"
+    });
+
+    // If we have caught this site using AI before, trigger the warning!
+    if (aiFlags > 0) {
+      res.json({ warn: true, domain: domain });
+    } else {
+      res.json({ warn: false });
+    }
+
+  } catch (error) {
+    console.error("Warning Route Error:", error);
+    res.json({ warn: false }); // Fail silently so it doesn't interrupt browsing
+  }
+});
+
 // Start the server
 const PORT = 3000;
+async function startServer() {
+  try {
+    await client.connect();
+    console.log("✅ Successfully connected to MongoDB!");
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to connect to MongoDB", err);
+  }
+}
+
+startServer();
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });

@@ -1,10 +1,5 @@
 // background.js
 
-// 1. Initial Badge State
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.action.setBadgeText({ text: "OFF" });
-});
-
 // 2. The Scraper "Engine" (Moved from popup to here for reliability)
 async function scrapeCurrentTab() {
     try {
@@ -67,5 +62,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse(response);
         });
         return true; // Keep channel open for async scrape
+    }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only run when the page fully loads and is a real website
+    if (changeInfo.status === 'complete' && tab.url && tab.url.startsWith('http')) {
+        
+        // Ask your database if this site is sketchy
+        fetch(`http://localhost:3000/api/site-warning?url=${encodeURIComponent(tab.url)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.warn) {
+                    // Fire a native Chrome notification!
+                    chrome.notifications.create({
+                        type: "basic",
+                        iconUrl: "assets/heyi_logo.png",
+                        title: "HEYI Alert",
+                        message: `Heads up! ${data.domain} is heavily flagged for AI-generated content. Proceed with caution.`,
+                        priority: 2
+                    });
+                }
+            })
+            .catch(err => console.log("Warning check failed in background:", err));
     }
 });
