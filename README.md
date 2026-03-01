@@ -1,4 +1,4 @@
-# HEYI
+![Heyi_Logo](heyi_logo.png)
 By Isabel DiFabio and Jeffrey Ernest
 
 **HEYI** (short for "Hey, AI!") is a full-stack Chrome extension built to help users identify AI-generated text and images on ecommerce websites. By combining a custom-trained machine learning model with a proactive MongoDB-backed warning system, HEYI provides transparency for everyone to be able to shop without fear of being scammed by the bad actors of AI.
@@ -23,7 +23,7 @@ In the current ever-changing world of AI, so much of the way we live, do busines
 
 | Component | Technology |
 | :--- | :--- |
-| **Frontend** | JavaScript (Chrome Extension API), HTML5, CSS3 |
+| **Frontend** | Render (Web Services), JavaScript (Chrome Extension API), HTML5, CSS3 |
 | **Backend** | Node.js, Express.js |
 | **Database** | MongoDB Atlas (Cloud) |
 | **ML Model** | Python, Kaggle, Hugging Face Transformers |
