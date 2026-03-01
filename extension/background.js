@@ -96,7 +96,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     // Only trigger when the page fully loads and is a real website
     if (changeInfo.status !== "complete" || !tab.url || !tab.url.startsWith("http")) return;
 
-    fetch(`http://localhost:3000/api/site-warning?url=${encodeURIComponent(tab.url)}`)
+    fetch(`https://heyi-a7j1.onrender.com/api/site-warning?url=${encodeURIComponent(tab.url)}`)
         .then((res) => res.json())
         .then((data) => {
             if (data.warn) {
